@@ -234,6 +234,81 @@ class AdminReconciliationView(_ListView):
     serializer = ReconciliationSerializer
 
 
+class AdminSubscriptionsView(APIView):
+    permission_classes = [IsPlatformAdmin]
+
+    def get(self, request):
+        from apps.subscriptions.models import Subscription
+
+        p = _qs_params(request)
+        qs = Subscription.objects.select_related("business", "plan")
+        qs = _date_filter(qs, p, field="created_at")
+        if p["status"]:
+            qs = qs.filter(status=p["status"])
+        if p["search"]:
+            qs = qs.filter(business__name__icontains=p["search"])
+        page = int(request.query_params.get("page", 1))
+        size = min(int(request.query_params.get("page_size", 25)), 100)
+        rows = qs[(page - 1) * size: page * size]
+        return ok({
+            "count": qs.count(), "page": page, "page_size": size,
+            "results": [{
+                "id": str(s.id),
+                "business": s.business.name,
+                "plan": s.plan.name,
+                "plan_code": s.plan.code,
+                "amount": str(s.plan.price_yearly if s.interval == "yearly"
+                              else s.plan.price_monthly),
+                "currency": s.plan.currency,
+                "interval": s.interval,
+                "status": s.status,
+                "period_start": s.current_period_start,
+                "period_end": s.current_period_end,
+                "is_active": s.is_active,
+                "created_at": s.created_at,
+            } for s in rows],
+        })
+
+
+class AdminInvoicesView(APIView):
+    permission_classes = [IsPlatformAdmin]
+
+    def get(self, request):
+        from apps.invoices.models import Invoice
+
+        p = _qs_params(request)
+        qs = Invoice.objects.select_related("business", "customer")
+        qs = _date_filter(qs, p)
+        if p["status"]:
+            qs = qs.filter(status=p["status"])
+        if p["search"]:
+            from django.db.models import Q
+            qs = qs.filter(
+                Q(invoice_number__icontains=p["search"])
+                | Q(business__name__icontains=p["search"])
+                | Q(customer__name__icontains=p["search"]))
+        page = int(request.query_params.get("page", 1))
+        size = min(int(request.query_params.get("page_size", 25)), 100)
+        rows = qs[(page - 1) * size: page * size]
+        return ok({
+            "count": qs.count(), "page": page, "page_size": size,
+            "results": [{
+                "id": str(i.id),
+                "invoice_number": i.invoice_number,
+                "business": i.business.name,
+                "customer": i.customer.name if i.customer else "",
+                "total": str(i.total),
+                "paid": str(i.amount_paid),
+                "balance_due": str(i.balance_due),
+                "currency": getattr(i, "currency", "TZS") or "TZS",
+                "status": i.status,
+                "issue_date": str(i.issue_date) if i.issue_date else None,
+                "due_date": str(i.due_date) if i.due_date else None,
+                "created_at": i.created_at,
+            } for i in rows],
+        })
+
+
 # ── providers ─────────────────────────────────────────────────────────────
 
 class AdminProvidersView(APIView):
