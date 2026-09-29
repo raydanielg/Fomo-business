@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# Env — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Django
+staticfiles/
+media/
+db.sqlite3
+test_db.sqlite3
+
+# Test / lint
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# OS / editors
+.DS_Store
+.idea/
+.vscode/
