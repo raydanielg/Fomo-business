@@ -109,3 +109,53 @@ def change_password(user, new_password):
 def request_account_deletion(user):
     user.deletion_requested_at = timezone.now()
     user.save(update_fields=["deletion_requested_at"])
+
+
+PLATFORM_ADMIN_PERMISSIONS = [
+    "admin.access", "dashboard.view", "analytics.view",
+    "businesses.view", "users.view", "staff.view", "branches.view",
+    "products.view", "inventory.view", "payments.view", "billing.view",
+    "subscriptions.view", "invoices.view", "payouts.view",
+    "reconciliation.view", "reports.view", "notifications.view",
+    "support.view", "help.view", "audit.view", "security.view",
+    "integrations.view", "feature_flags.view", "system_health.view",
+    "settings.view",
+]
+
+
+def auth_identity(user):
+    """Normalized identity the frontend routes on — backend is authoritative.
+
+    Role precedence: platform staff → ADMIN; superuser → SUPER_ADMIN;
+    else the highest membership role (OWNER > MANAGER > …); CUSTOMER when
+    the user has no business membership at all.
+    """
+    memberships = (
+        user.memberships.select_related("role")
+        .filter(status="active")
+    )
+    if user.is_superuser:
+        role, perms = "SUPER_ADMIN", list(PLATFORM_ADMIN_PERMISSIONS) + ["*"]
+    elif user.is_staff:
+        role, perms = "ADMIN", list(PLATFORM_ADMIN_PERMISSIONS)
+    else:
+        role = "CUSTOMER"
+        perms = set()
+        for m in memberships:
+            code = m.role.code
+            if code == "OWNER":
+                role = "OWNER"
+            elif role == "CUSTOMER":
+                role = code or "STAFF"
+            perms |= m.get_permissions()
+        perms = sorted(perms)
+
+    suspended = not user.is_active or user.deletion_requested_at is not None
+    return {
+        "role": role,
+        "status": "SUSPENDED" if suspended else "ACTIVE",
+        "permissions": perms,
+        "is_platform_admin": role in ("SUPER_ADMIN", "ADMIN"),
+        "requires_email_verification": not user.is_verified,
+        "requires_mfa": False,
+    }

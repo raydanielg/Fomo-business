@@ -92,7 +92,11 @@ class LoginView(APIView):
         return Response(
             {
                 "success": True,
-                "data": {**tokens, "user": UserSerializer(user).data},
+                "data": {
+                    **tokens,
+                    "user": UserSerializer(user).data,
+                    **services.auth_identity(user),
+                },
             }
         )
 
@@ -149,6 +153,19 @@ class MeView(generics.RetrieveUpdateAPIView):
         if self.request.method in ("PATCH", "PUT"):
             return ProfileUpdateSerializer
         return UserSerializer
+
+    def retrieve(self, request, *args, **kwargs):
+        """GET returns user + normalized auth identity (role/permissions/status)."""
+        user = request.user
+        return Response(
+            {
+                "success": True,
+                "data": {
+                    "user": UserSerializer(user).data,
+                    **services.auth_identity(user),
+                },
+            }
+        )
 
 
 class ChangePasswordView(APIView):
