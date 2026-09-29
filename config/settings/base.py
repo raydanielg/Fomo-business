@@ -62,6 +62,7 @@ LOCAL_APPS = [
     "apps.audit",
     "apps.legal",
     "apps.help",
+    "apps.billing",
 ]
 
 INSTALLED_APPS = DJANGO_APPS + THIRD_PARTY_APPS + LOCAL_APPS
@@ -259,6 +260,13 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 SMS_PROVIDER = env("SMS_PROVIDER", default="console")
 SMS_API_KEY = env("SMS_API_KEY", default="")
 SMS_SENDER_ID = env("SMS_SENDER_ID", default="FOMO")
+
+# ── Snippe payment provider ──────────────────────────────────────────────
+SNIPPE_API_KEY = env("SNIPPE_API_KEY", default="")
+SNIPPE_WEBHOOK_SECRET = env("SNIPPE_WEBHOOK_SECRET", default="")
+SNIPPE_BASE_URL = env("SNIPPE_BASE_URL", default="https://api.snippe.sh")
+SNIPPE_API_VERSION = env("SNIPPE_API_VERSION", default="2026-01-25")
+SNIPPE_WEBHOOK_TOLERANCE = env.int("SNIPPE_WEBHOOK_TOLERANCE", default=300)
 WHATSAPP_PROVIDER = env("WHATSAPP_PROVIDER", default="console")
 WHATSAPP_API_KEY = env("WHATSAPP_API_KEY", default="")
 

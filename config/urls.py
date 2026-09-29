@@ -42,6 +42,7 @@ api_v1 = [
     path("audit/", include("apps.audit.urls")),
     path("legal/", include("apps.legal.urls")),
     path("help/", include("apps.help.urls")),
+    path("billing/", include("apps.billing.urls")),
     path("support/", SupportConfigView.as_view(), name="support-config"),
     path("", include(scheduled_router.urls)),
 ]
