@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from .models import Plan, Subscription, SubscriptionEvent, UsageRecord
+from .models import BillingRequest, Plan, Subscription, SubscriptionEvent, UsageRecord
 
 
 class PlanSerializer(serializers.ModelSerializer):
@@ -55,3 +55,30 @@ class ChangePlanSerializer(serializers.Serializer):
     interval = serializers.ChoiceField(
         choices=Subscription.Interval.choices, default=Subscription.Interval.MONTHLY
     )
+
+
+class CheckoutSerializer(serializers.Serializer):
+    plan_code = serializers.CharField()
+    phone = serializers.RegexField(
+        regex=r"^\+?\d{9,15}$",
+        error_messages={"invalid": "Enter a valid mobile money number."},
+    )
+    method = serializers.ChoiceField(
+        choices=BillingRequest.Method.choices,
+        default=BillingRequest.Method.MPESA,
+    )
+    interval = serializers.ChoiceField(
+        choices=Subscription.Interval.choices, default=Subscription.Interval.MONTHLY
+    )
+
+
+class BillingRequestSerializer(serializers.ModelSerializer):
+    plan = PlanSerializer(read_only=True)
+
+    class Meta:
+        model = BillingRequest
+        fields = [
+            "id", "reference", "plan", "interval", "method", "phone",
+            "amount", "currency", "status", "created_at", "paid_at",
+        ]
+        read_only_fields = fields

@@ -1,3 +1,5 @@
+import uuid
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -211,3 +213,60 @@ class UsageRecord(models.Model):
             )
         ]
         indexes = [models.Index(fields=["business", "metric", "period"])]
+
+
+class BillingRequest(models.Model):
+    """A pending subscription payment — mirrors a mobile-money push request.
+
+    Lifecycle: PENDING → PAID (confirm) or FAILED/EXPIRED. On PAID the
+    plan change is applied via ``services.change_plan``.
+    """
+
+    class Status(models.TextChoices):
+        PENDING = "pending", "Pending"
+        PAID = "paid", "Paid"
+        FAILED = "failed", "Failed"
+        EXPIRED = "expired", "Expired"
+
+    class Method(models.TextChoices):
+        MPESA = "MPESA", "M-Pesa"
+        TIGOPESA = "TIGOPESA", "Tigo Pesa"
+        AIRTEL = "AIRTEL", "Airtel Money"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    business = models.ForeignKey(
+        "businesses.Business",
+        on_delete=models.CASCADE,
+        related_name="billing_requests",
+        db_index=True,
+    )
+    plan = models.ForeignKey(
+        Plan, on_delete=models.PROTECT, related_name="billing_requests"
+    )
+    interval = models.CharField(
+        max_length=16,
+        choices=[("monthly", "Monthly"), ("yearly", "Yearly")],
+        default="monthly",
+    )
+    method = models.CharField(max_length=16, choices=Method.choices)
+    phone = models.CharField(max_length=32)
+    amount = models.DecimalField(max_digits=14, decimal_places=2)
+    currency = models.CharField(max_length=8, default="TZS")
+    status = models.CharField(
+        max_length=16, choices=Status.choices, default=Status.PENDING,
+        db_index=True,
+    )
+    reference = models.CharField(max_length=32, unique=True, db_index=True)
+    created_by = models.ForeignKey(
+        "accounts.User", on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="billing_requests",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    paid_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["business", "status"])]
+
+    def __str__(self):
+        return f"{self.reference} {self.plan_id} {self.status}"

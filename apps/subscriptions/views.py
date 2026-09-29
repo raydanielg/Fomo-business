@@ -6,9 +6,11 @@ from rest_framework.views import APIView
 from apps.common.exceptions import APIError, ErrorCode
 from apps.common.permissions import HasActiveMembership, HasPermission
 
-from .models import Plan, Subscription, UsageRecord
+from .models import BillingRequest, Plan, Subscription, UsageRecord
 from .serializers import (
+    BillingRequestSerializer,
     ChangePlanSerializer,
+    CheckoutSerializer,
     PlanSerializer,
     SubscriptionSerializer,
     UsageRecordSerializer,
@@ -98,6 +100,69 @@ class ChangePlanView(APIView):
         sub.interval = serializer.validated_data["interval"]
         sub.save(update_fields=["interval"])
         return Response({"success": True, "data": SubscriptionSerializer(sub).data})
+
+
+class SubscriptionCheckoutView(APIView):
+    """POST /subscriptions/checkout/ → create a billing request and
+    send the simulated mobile-money push notification to the payer."""
+
+    permission_classes = [HasActiveMembership, HasPermission]
+    required_permission = "subscription.manage"
+    serializer_class = CheckoutSerializer
+
+    def post(self, request):
+        serializer = CheckoutSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        d = serializer.validated_data
+
+        plan = Plan.objects.filter(
+            code=d["plan_code"].upper(), is_active=True
+        ).first()
+        if plan is None:
+            raise APIError("Plan not found.", code=ErrorCode.NOT_FOUND,
+                           status_code=404)
+
+        amount = (
+            plan.price_yearly
+            if d["interval"] == Subscription.Interval.YEARLY
+            else plan.price_monthly
+        )
+        br = services.create_billing_request(
+            business=request.business,
+            plan=plan,
+            interval=d["interval"],
+            method=d["method"],
+            phone=d["phone"],
+            amount=amount,
+            currency=plan.currency,
+            user=request.user,
+        )
+        return Response(
+            {"success": True, "data": BillingRequestSerializer(br).data},
+            status=201,
+        )
+
+
+class BillingStatusView(APIView):
+    """GET /subscriptions/billing/{reference}/ → poll payment status."""
+
+    permission_classes = [HasActiveMembership, HasPermission]
+    required_permission = "subscription.manage"
+    serializer_class = BillingRequestSerializer
+
+    def get(self, request, reference):
+        br = BillingRequest.objects.filter(
+            business=request.business, reference=reference
+        ).first()
+        if br is None:
+            raise APIError("Payment request not found.",
+                           code=ErrorCode.NOT_FOUND, status_code=404)
+        # simulate the carrier: a pending request settles on second poll
+        # (in production this is driven by the payment gateway webhook)
+        br = services.settle_billing_request(br)
+        return Response(
+            {"success": True, "data": BillingRequestSerializer(br).data}
+        )
 
 
 class UsageView(APIView):

@@ -904,9 +904,18 @@ def dashboard(business, request):
         .annotate(total=Sum("total"))
     )
     by_day = {row["d"]: row["total"] for row in trend_qs}
+    expense_qs = (
+        Expense.objects.filter(
+            business=business, expense_date__gte=trend_start,
+        )
+        .values("expense_date")
+        .annotate(total=Sum("amount"))
+    )
+    exp_by_day = {row["expense_date"]: row["total"] for row in expense_qs}
     trend = [
         {"date": (trend_start + timedelta(days=i)).isoformat(),
-         "total": str(by_day.get(trend_start + timedelta(days=i), ZERO_D))}
+         "total": str(by_day.get(trend_start + timedelta(days=i), ZERO_D)),
+         "expenses": str(exp_by_day.get(trend_start + timedelta(days=i), ZERO_D))}
         for i in range(trend_days)
     ]
 

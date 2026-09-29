@@ -10,7 +10,8 @@ from django.utils import timezone
 from apps.common.exceptions import FeatureNotAvailableError, PlanLimitReachedError
 
 from .models import (
-    Feature, Plan, PlanFeature, Subscription, SubscriptionEvent, UsageRecord,
+    BillingRequest, Feature, Plan, PlanFeature, Subscription,
+    SubscriptionEvent, UsageRecord,
 )
 
 logger = logging.getLogger("fomo.subscriptions")
@@ -253,3 +254,54 @@ def expire_due_subscriptions(now=None):
     )
     count = expired.update(status=Subscription.Status.EXPIRED)
     return count
+
+
+# ── billing / checkout ──────────────────────────────────────────────────
+
+def create_billing_request(*, business, plan, interval, method, phone,
+                           amount, currency="TZS", user=None):
+    """Create a pending payment and notify the payer — this is the seam
+    where a real mobile-money push (AzamPay, Selcom, M-Pesa API) would be
+    invoked. The notification doubles as the 'push' the payer sees."""
+    import secrets
+
+    from .models import BillingRequest
+
+    br = BillingRequest.objects.create(
+        business=business, plan=plan, interval=interval, method=method,
+        phone=phone, amount=amount, currency=currency,
+        reference=f"FMO-{secrets.token_hex(4).upper()}",
+        created_by=user,
+    )
+    try:
+        from apps.notifications.services import notify
+        notify(
+            user or business.owner, business=business, type="subscription",
+            title="Payment request sent",
+            message=(
+                f"Approve the {plan.get_billing_interval_display() if hasattr(plan, 'get_billing_interval_display') else ''} "
+                f"{plan.name} payment of {currency} {amount} on {phone}."
+            ),
+            data={"reference": br.reference, "status": br.status},
+        )
+    except Exception:
+        pass  # notification is best-effort, billing itself already recorded
+    return br
+
+
+def settle_billing_request(br):
+    """Settle a pending request: marks it paid and applies the plan change.
+
+    Simulates the payment-gateway confirmation webhook. Idempotent —
+    calling it on a settled request returns it unchanged."""
+    if br.status != BillingRequest.Status.PENDING:
+        return br
+
+    with transaction.atomic():
+        br.status = BillingRequest.Status.PAID
+        br.paid_at = timezone.now()
+        br.save(update_fields=["status", "paid_at"])
+        sub = change_plan(br.business, br.plan.code, user=br.created_by)
+        sub.interval = br.interval
+        sub.save(update_fields=["interval"])
+    return br
