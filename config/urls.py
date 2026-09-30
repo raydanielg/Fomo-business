@@ -43,6 +43,7 @@ api_v1 = [
     path("legal/", include("apps.legal.urls")),
     path("help/", include("apps.help.urls")),
     path("billing/", include("apps.billing.urls")),
+    path("platform/", include("apps.platform_admin.urls")),
     path("support/", SupportConfigView.as_view(), name="support-config"),
     path("", include(scheduled_router.urls)),
 ]
